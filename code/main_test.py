@@ -6,7 +6,6 @@ from scipy import signal
 x_mic,fs,mic_positions,source_positions = simulate_data(1,1)
 n_arrays,_,n_samples = x_mic.shape
 
-print(source_positions)
 c = 343.0 # speed of sound m/s
 for i in range(source_positions.shape[0]):
 	p_mic1 =  mic_positions[0,:,0]
@@ -32,6 +31,7 @@ for i in range(n_arrays):
 		x1_neural[:,j] = cochlear_model_processing(x1_filtered[:,j],fs)
 		x2_neural[:,j] = cochlear_model_processing(x2_filtered[:,j],fs)
 		corr = signal.correlate(x1_neural[:,j], x2_neural[:,j])
+		tau[j,i] = np.argmax(corr)
 
-		pylab.plot(corr[n_samples:])
-		pylab.show()
+
+print(tau/fs)

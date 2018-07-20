@@ -25,7 +25,14 @@ def rectify(x):
 	returns 0 for negative entries of x. 
 	"""
 	return np.array([max(i,0) for i in x])
-	
+
+def delay_signal(x,delay=100):
+	"""
+	delay x by delay samples
+	"""
+	x = np.roll(x,delay)
+	x[:delay] = 0
+	return x
 
 def moving_average(x,M=10):
 	"""
@@ -47,6 +54,7 @@ def cochlear_model_processing(x,fs,time_avg=0.03):
 	x_avg = np.zeros(x.shape)
 	temp = moving_average(x,int(fs*time_avg)+1)
 	x_avg[-max(temp.shape):] = temp
+	x_avg = delay_signal(x_avg)
 	x_modulated = rectify(x - x_avg)
 	x_threshold = rectify(x - 2*x_avg) # 6dB threshold
 	above_threshold = 1.0*(x_threshold>0)
@@ -54,10 +62,10 @@ def cochlear_model_processing(x,fs,time_avg=0.03):
 	t_onset = np.where(onset_offsets==1)[0]
 	t_offset = np.where(onset_offsets==-1)[0]
 	pulses = 0*x
-	pulse_length = int(fs*200*1e-6) # 20 μsec pulse
+	pulse_length = int(fs*20*1e-3) # 20 μsec pulse
 	for i in range(max(t_onset.shape)-1):
 		if (t_onset[i]<t_offset[i]):
-			h = sum(np.sqrt(x_threshold[t_onset[i]:t_offset[i]]))/100
+			h = sum(np.sqrt(x_threshold[t_onset[i]:t_offset[i]]))
 		else: 
 			h = 0
 		pulse_center = int((t_onset[i]+t_offset[i])/2)
