@@ -18,6 +18,22 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
+def enframe(x, winlen, hoplen):
+	"""
+	receives a 1D numpy array and divides it into frames.
+	outputs a numpy matrix with the frames on the rows.
+	"""
+	x = np.squeeze(x)
+	if x.ndim != 1: 
+		raise TypeError("enframe input must be a 1-dimensional array.")
+	n_frames = 1 + np.int(np.floor((len(x) - winlen) / float(hoplen)))
+	print(x.shape,winlen,hoplen,len(x))
+	xf = np.zeros((n_frames, winlen))
+	for ii in range(n_frames):
+		xf[ii] = x[ii * hoplen : ii * hoplen + winlen]
+	return xf
+
+
 def rectify(x):
 	"""
 	half-way rectifier function. 
@@ -38,15 +54,9 @@ def shift_signal(x,delay=100):
 	Outputs:
 	    delayed signal
 	"""
-	
-	if x.ndim == 1:
-		n_cols = 1 
-		n_rows = x.shape[0]
-	else:
-		n_rows,n_cols = x.shape
-
-	if n_cols!=1 or (n_cols > n_rows):
-		raise('input should be a column vector!')
+	x = np.squeeze(x)
+	if x.ndim != 1: 
+		raise TypeError("enframe input must be a 1-dimensional array.")
 
 	x = np.roll(x,delay)
 	x[:delay] = 0
@@ -109,9 +119,11 @@ def cochlear_model_processing(x,fs,time_avg=0.03,pulse_width=2*1e-4):
 	x_modulated = rectify(x - x_avg)
 	pulses = 0*x
 	pulse_width = int(fs*pulse_width) # time to samples
+	pulse_height_max = max(x)
 	for i in range(max(t_onset.shape)-1):
 		if (t_onset[i]<t_offset[i]):
 			pulse_height = sum(np.sqrt(x_modulated[t_onset[i]:t_offset[i]]))
+			pulse_height = min(pulse_height,pulse_height_max)
 		else: 
 			pulse_height = 0
 		pulse_center = int((t_onset[i]+t_offset[i])/2)
@@ -121,22 +133,46 @@ def cochlear_model_processing(x,fs,time_avg=0.03,pulse_width=2*1e-4):
 	return pulses
 
 
+def estimate_tdoa(x1,x2,winlen,hoplen,fs):
+	"""
+	Estimate tdoa for short windows using two pulse train x1 and x2,
+	corresponding to a pair of adjacent microphones.  
+	"""
+	x1_framed = enframe(x1,winlen,hoplen)
+	x2_framed = enframe(x2,winlen,hoplen)
+	n_frames,_ = x1_framed.shape
+	tdoa = np.zeros((n_frames,1))
+	for i in range(n_frames):
+		corr = scipy.signal.correlate(x1_framed[i,:], x2_framed[i,:])
+		# NOTE: 
+		#   I'm dividing corr(i) by (n-i-1)  
+		corr = corr[winlen:]/np.arange(winlen-1,0,-1)
+		# pylab.subplot(2,2,1)
+		# pylab.plot(x1_framed[i,:])
+		# pylab.subplot(2,2,2)
+		# pylab.plot(x2_framed[i,:])
+		# pylab.subplot(2,1,2)
+		# pylab.plot(corr)
+		# pylab.show()
+		tdoa[i] = np.argmax(corr)/fs
+	return tdoa
+
 def apply_fbank(x,fs,cfs,align=False,hilbert_envelope=False):
     """
-    	Python implementation of gammatone based on the MATLAB code by:  Christopher Hummersone
-		Link to original source: 
-		http://www.mathworks.com/matlabcentral/fileexchange/32212-gammatone-filterbank
-        
-        Inputs:
-        x:        		  input signal (numpy array)
-        fs:       		  sampling rate (integer)
-        cfs:      		  center frequencies (numpy array)
-        align:    		  allow phase alignment across filters. 
-        hilbert_envelope: Return hilbert envelope of the filter-bank outputs.
+    Python implementation of gammatone based on the MATLAB code by:  Christopher Hummersone
+	Link to original source: 
+	http://www.mathworks.com/matlabcentral/fileexchange/32212-gammatone-filterbank
+    
+    Inputs:
+    x:        		  input signal (numpy array)
+    fs:       		  sampling rate (integer)
+    cfs:      		  center frequencies (numpy array)
+    align:    		  allow phase alignment across filters. 
+    hilbert_envelope: Return hilbert envelope of the filter-bank outputs.
 
-        Outputs:
-        y:		numpy array of filterbank outputs (samples x channels)
-        b:		filterbank bandwidths (aka rate of decay)	
+ 	Outputs:
+ 	y:		numpy array of filterbank outputs (samples x channels)
+ 	b:		filterbank bandwidths (aka rate of decay)	
 
     """
     n_channels = len(cfs)
@@ -215,12 +251,11 @@ if __name__=='__main__':
 	rate,sig = wav.read(sample_file)
 	x = sig.reshape((len(sig),1))
 	fs = rate
-	n_channels = 40
+	n_channels = 16
 	cfs = make_centerFreq(20,3800,n_channels)
-	print(x.shape)
 	x_filtered,_ = apply_fbank(x,fs,cfs,align=False,hilbert_envelope=False)
 	x_neural = np.zeros(x_filtered.shape)
 	for i in range(n_channels):
-		x_neural[:,i] = cochlear_model_processing(x_filtered[:,i],fs)
+		x_neural[:,i] = cochlear_model_processing(x_filtered[:,i],fs,0.01)
 		pylab.plot(x_neural[:,i]+cfs[i])
 	pylab.show()

@@ -51,7 +51,13 @@ def simulate_data(n_sources,n_micarrays,fixed_position=False,PLOT_ROOM=False):
 	# Add Sources
 	for i in range(n_sources):
 		if not(fixed_position):
-			position = np.array([np.random.randint(1,6),np.random.randint(1,6),np.random.uniform(1.8,2.1)]).T
+			theta = np.random.uniform(0,2*np.pi)
+			r = np.random.uniform(0,2)
+			x = 3 + r*np.cos(theta)
+			y = 3 + r*np.sin(theta)
+			z = np.random.uniform(1.8,2.1)
+			position = np.array([x,y,z])
+
 		else:
 			# NOTE:
 			#   This scenario only works for a single position. 
@@ -71,8 +77,11 @@ def simulate_data(n_sources,n_micarrays,fixed_position=False,PLOT_ROOM=False):
 		#   all microphone arrays together. So, I had to 
 		#   import them one by one and generate their responses.
 		if not(fixed_position):
-			x1 = np.random.uniform(0.2,5.8)
-			y1 = np.random.uniform(0.2,5.8)
+			theta = np.random.uniform(0,2*np.pi)
+			r = np.random.uniform(2.5,2.9)
+			x1 = 3 + r*np.cos(theta)
+			y1 = 3 + r*np.sin(theta)
+
 		else:
 			# NOTE:
 			#   This scenario only works for a single position. 
@@ -102,5 +111,5 @@ def simulate_data(n_sources,n_micarrays,fixed_position=False,PLOT_ROOM=False):
 	return np.array(array_recordings),fs,np.array(mic_positions),np.array(source_positions)
 
 if __name__=='__main__':
-	temp,fs,mic_array,source_array = simulate_data(8,12,fixed_position=False,PLOT_ROOM=False)
+	temp,fs,mic_array,source_array = simulate_data(1,12,fixed_position=False,PLOT_ROOM=True)
 	print(mic_array.shape,source_array.shape)
