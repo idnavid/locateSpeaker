@@ -5,10 +5,8 @@ enery detection, framing/segmentation, etc.
 
 """
 
+ 
 
-# Python implementation of gammatone based on the MATLAB code by:  Christopher Hummersone
-# Link to original source: http://www.mathworks.com/matlabcentral/fileexchange/32212-gammatone-filterbank
-#
 # Navid Shokouhi - January 2016 
 
 import numpy as np
@@ -22,14 +20,34 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def rectify(x):
 	"""
-	returns 0 for negative entries of x. 
+	half-way rectifier function. 
+	
+	Inputs: 
+		x:   vector input
+	Outputs:
+	    returns a vector with 0s at negative entries of x. 
 	"""
 	return np.array([max(i,0) for i in x])
 
-def delay_signal(x,delay=100):
+def shift_signal(x,delay=100):
 	"""
-	delay x by delay samples
+	shift signal x to the right by 'delay' samples
+	Inputs: 
+		x: assumed n x 1
+		delay: number of samples to shift by 
+	Outputs:
+	    delayed signal
 	"""
+	
+	if x.ndim == 1:
+		n_cols = 1 
+		n_rows = x.shape[0]
+	else:
+		n_rows,n_cols = x.shape
+
+	if n_cols!=1 or (n_cols > n_rows):
+		raise('input should be a column vector!')
+
 	x = np.roll(x,delay)
 	x[:delay] = 0
 	return x
@@ -46,39 +64,80 @@ def moving_average(x,M=10):
 	return np.convolve(x, np.ones((M,))/(1.0*M), mode='valid')
 
 
-def cochlear_model_processing(x,fs,time_avg=0.03):
+def cochlear_model_processing(x,fs,time_avg=0.03,pulse_width=2*1e-4):
 	"""
-	Needs comments
+	Approximate neural firing response to audio excitations. 
+	This function was implemented based on the descriptions 
+	provided in the paper by:
+	
+	Dorfan et al. "Distributed Expectation-Maximization Algorithm 
+	for Speaker Localization in Reverberant Environments." 
+	IEEE/ACM TASLP, 26, pp. 682-695, 2018.
+
+	Input:
+		x:   		 single channel of a filterbank output 
+			 		 The filterbank used to calculate x should ideally
+			 		 be auditory-inspired - such as gammatone with ERB centers.
+		fs:  		 sampling rate (Hz)
+		time_avg:    length of moving average filter in seconds.
+				     The moving average is used to determine a 
+				     running threshold that is used to estimate 
+				     the occurance of a pulse.  
+		pulse_width: width of neural pulses used in output signal. 
+	
+	Outputs:
+		pulses:     signal of the same length of x (input) representing 
+					neuronal pulses. This signal is potentially to be robust 
+					to room reverberations. 			
 	"""
 	x = rectify(x)
 	x_avg = np.zeros(x.shape)
 	temp = moving_average(x,int(fs*time_avg)+1)
 	x_avg[-max(temp.shape):] = temp
-	x_avg = delay_signal(x_avg)
-	x_modulated = rectify(x - x_avg)
+
+	# NOTE:
+	#   According the reference, the baseline threshold must be moved forward
+	#   by a time-shift in order to "enhance the first wavefronts". 
+	x_avg = shift_signal(x_avg)
+    
 	x_threshold = rectify(x - 2*x_avg) # 6dB threshold
 	above_threshold = 1.0*(x_threshold>0)
 	onset_offsets = np.diff(above_threshold)
 	t_onset = np.where(onset_offsets==1)[0]
 	t_offset = np.where(onset_offsets==-1)[0]
+
+	x_modulated = rectify(x - x_avg)
 	pulses = 0*x
-	pulse_length = int(fs*20*1e-3) # 20 μsec pulse
+	pulse_width = int(fs*pulse_width) # time to samples
 	for i in range(max(t_onset.shape)-1):
 		if (t_onset[i]<t_offset[i]):
-			h = sum(np.sqrt(x_threshold[t_onset[i]:t_offset[i]]))
+			pulse_height = sum(np.sqrt(x_modulated[t_onset[i]:t_offset[i]]))
 		else: 
-			h = 0
+			pulse_height = 0
 		pulse_center = int((t_onset[i]+t_offset[i])/2)
-		pulses[pulse_center-int(pulse_length/2):pulse_center+int(pulse_length/2)] = h
+		pulses[pulse_center-int(pulse_width/2):
+		       pulse_center+int(pulse_width/2)] = pulse_height
+
 	return pulses
 
 
 def apply_fbank(x,fs,cfs,align=False,hilbert_envelope=False):
     """
-        x:        input signal (numpy array)
-        fs:       sampling rate (integer)
-        cfs:      center frequencies (numpy array)
-        align:    allow phase alignment across filters. 
+    	Python implementation of gammatone based on the MATLAB code by:  Christopher Hummersone
+		Link to original source: 
+		http://www.mathworks.com/matlabcentral/fileexchange/32212-gammatone-filterbank
+        
+        Inputs:
+        x:        		  input signal (numpy array)
+        fs:       		  sampling rate (integer)
+        cfs:      		  center frequencies (numpy array)
+        align:    		  allow phase alignment across filters. 
+        hilbert_envelope: Return hilbert envelope of the filter-bank outputs.
+
+        Outputs:
+        y:		numpy array of filterbank outputs (samples x channels)
+        b:		filterbank bandwidths (aka rate of decay)	
+
     """
     n_channels = len(cfs)
     filterOrder = 4
@@ -165,8 +224,3 @@ if __name__=='__main__':
 		x_neural[:,i] = cochlear_model_processing(x_filtered[:,i],fs)
 		pylab.plot(x_neural[:,i]+cfs[i])
 	pylab.show()
-
-
-
-
-	
